@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public static class GameManager
+public static class GameManager 
 {
     // Static references to main game components
     public static PlayerData PlayerData { get; private set; }

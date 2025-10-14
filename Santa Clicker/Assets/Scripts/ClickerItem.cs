@@ -17,6 +17,11 @@ public class ClickerItem : MonoBehaviour
         double clickMultiplier = GameManager.GetClickMultiplier(currency);
         double gain = perClick * clickMultiplier;
         GameManager.AddCurrency(currency, gain);
+        // Force immediate UI update on click
+        if (GameManager.UIController != null)
+        {
+            GameManager.UIController.ForceRefresh();
+        }
     }
 
     /// <summary>

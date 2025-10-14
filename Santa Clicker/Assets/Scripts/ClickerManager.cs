@@ -22,20 +22,37 @@ public class ClickerManager : MonoBehaviour
     public double cookiePerClick = 1;
     public double cookiePerSecond = 0;
 
+	// Passive income ticking once per interval instead of every frame
+	[SerializeField] private float passiveTickIntervalSeconds = 1f;
+	private float passiveTickAccumulator = 0f;
+
     void Start()
     {
         SetupClickerItems();
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        double delta = Time.deltaTime;
-        foreach (var item in clickerItems)
-        {
-            item.Generate(delta);
-        }
-    }
+	// Update is called once per frame
+	void Update()
+	{
+		passiveTickAccumulator += Time.deltaTime;
+		int ticks = Mathf.FloorToInt(passiveTickAccumulator / passiveTickIntervalSeconds);
+		if (ticks > 0)
+		{
+			passiveTickAccumulator -= ticks * passiveTickIntervalSeconds;
+			// Apply passive income in whole-second ticks based on PlayerData
+			if (playerData != null)
+			{
+				GameManager.AddCurrency(Currency.GingerBread, playerData.gingerbreadPerSecond * ticks);
+				GameManager.AddCurrency(Currency.CandyCane, playerData.candyCanePerSecond * ticks);
+				GameManager.AddCurrency(Currency.Cookie, playerData.cookiePerSecond * ticks);
+			}
+			// Force UI update after passive tick
+			if (GameManager.UIController != null)
+			{
+				GameManager.UIController.ForceRefresh();
+			}
+		}
+	}
 
     public void HandleClick (string itemName)
     {
