@@ -5,6 +5,13 @@ public class UpgradeManager : MonoBehaviour
 {
     public PlayerData playerData;
     public List<UpgradeData> availableUpgrades = new List<UpgradeData>();
+    [Header("Debugging")]
+    public bool debugEffects = false;
+
+	private PlayerData ActivePlayerData
+	{
+		get { return GameManager.PlayerData != null ? GameManager.PlayerData : playerData; }
+	}
 
     void Start()
     {
@@ -16,15 +23,16 @@ public class UpgradeManager : MonoBehaviour
 
     public bool CanAffordUpgrade(UpgradeData upgrade)
     {
-        double currentAmount = GetCurrencyAmount(upgrade.currency);
+        double currentAmount = GetCurrencyAmount(upgrade.costCurrency);
         double cost = GetUpgradeCost(upgrade);
         return currentAmount >= cost;
     }
 
     public double GetUpgradeCost(UpgradeData upgrade)
     {
-        int currentLevel = playerData.GetUpgradeLevel(upgrade.upgradeName);
-        return upgrade.baseCost * Mathf.Pow((float)upgrade.costMultiplier, currentLevel);
+        int currentLevel = ActivePlayerData != null ? ActivePlayerData.GetUpgradeLevel(upgrade.upgradeName) : 0;
+        double rawCost = upgrade.baseCost * Mathf.Pow((float)upgrade.costMultiplier, currentLevel);
+        return System.Math.Round(rawCost, 0, System.MidpointRounding.AwayFromZero);
     }
 
     public bool PurchaseUpgrade(UpgradeData upgrade)
@@ -36,56 +44,58 @@ public class UpgradeManager : MonoBehaviour
         }
 
         double cost = GetUpgradeCost(upgrade);
-        SpendCurrency(upgrade.currency, cost);
-        playerData.IncrementUpgradeLevel(upgrade.upgradeName);
-        ApplyUpgradeEffect(upgrade);
+        SpendCurrency(upgrade.costCurrency, cost);
+        if (ActivePlayerData != null) ActivePlayerData.IncrementUpgradeLevel(upgrade.upgradeName);
+        ApplyUpgradeEffects(upgrade);
 
-        Debug.Log($"Purchased {upgrade.upgradeName} for {cost} {upgrade.currency}!");
+        Debug.Log($"Purchased {upgrade.upgradeName} for {cost} {upgrade.costCurrency}!");
         return true;
     }
 
-    private void ApplyUpgradeEffect(UpgradeData upgrade)
+    private void ApplyUpgradeEffects(UpgradeData upgrade)
     {
-        switch (upgrade.upgradeType)
+        if (upgrade.effects == null) return;
+        var pd = ActivePlayerData;
+        if (pd == null) return;
+        foreach (var effect in upgrade.effects)
         {
-            case UpgradeType.Click:
-                ApplyClickUpgrade(upgrade);
-                break;
-            case UpgradeType.Passive:
-                ApplyPassiveUpgrade(upgrade);
-                break;
-        }
-    }
-
-    private void ApplyClickUpgrade(UpgradeData upgrade)
-    {
-        switch (upgrade.currency)
-        {
-            case Currency.GingerBread:
-                playerData.gingerBreadClick += upgrade.valueIncrease;
-                break;
-            case Currency.CandyCane:
-                playerData.candyCaneClick += upgrade.valueIncrease;
-                break;
-            case Currency.Cookie:
-                playerData.cookieClick += upgrade.valueIncrease;
-                break;
-        }
-    }
-
-    private void ApplyPassiveUpgrade(UpgradeData upgrade)
-    {
-        switch (upgrade.currency)
-        {
-            case Currency.GingerBread:
-                playerData.gingerbreadPerSecond += upgrade.valueIncrease;
-                break;
-            case Currency.CandyCane:
-                playerData.candyCanePerSecond += upgrade.valueIncrease;
-                break;
-            case Currency.Cookie:
-                playerData.cookiePerSecond += upgrade.valueIncrease;
-                break;
+            if (effect == null) continue;
+            if (effect.effectType == UpgradeEffectType.Click)
+            {
+                switch (effect.currency)
+                {
+                    case Currency.GingerBread:
+                        pd.gingerBreadClick += effect.valueIncrease;
+                        if (debugEffects) Debug.Log($"[Upgrade] {upgrade.upgradeName}: Click +{effect.valueIncrease} GingerBread => {pd.gingerBreadClick}");
+                        break;
+                    case Currency.CandyCane:
+                        pd.candyCaneClick += effect.valueIncrease;
+                        if (debugEffects) Debug.Log($"[Upgrade] {upgrade.upgradeName}: Click +{effect.valueIncrease} CandyCane => {pd.candyCaneClick}");
+                        break;
+                    case Currency.Cookie:
+                        pd.cookieClick += effect.valueIncrease;
+                        if (debugEffects) Debug.Log($"[Upgrade] {upgrade.upgradeName}: Click +{effect.valueIncrease} Cookie => {pd.cookieClick}");
+                        break;
+                }
+            }
+            else if (effect.effectType == UpgradeEffectType.Passive)
+            {
+                switch (effect.currency)
+                {
+                    case Currency.GingerBread:
+                        pd.gingerbreadPerSecond += effect.valueIncrease;
+                        if (debugEffects) Debug.Log($"[Upgrade] {upgrade.upgradeName}: Passive +{effect.valueIncrease}/sec GingerBread => {pd.gingerbreadPerSecond}");
+                        break;
+                    case Currency.CandyCane:
+                        pd.candyCanePerSecond += effect.valueIncrease;
+                        if (debugEffects) Debug.Log($"[Upgrade] {upgrade.upgradeName}: Passive +{effect.valueIncrease}/sec CandyCane => {pd.candyCanePerSecond}");
+                        break;
+                    case Currency.Cookie:
+                        pd.cookiePerSecond += effect.valueIncrease;
+                        if (debugEffects) Debug.Log($"[Upgrade] {upgrade.upgradeName}: Passive +{effect.valueIncrease}/sec Cookie => {pd.cookiePerSecond}");
+                        break;
+                }
+            }
         }
     }
 
@@ -108,13 +118,42 @@ public class UpgradeManager : MonoBehaviour
     // Helper method to get upgrade description for UI
     public string GetUpgradeDescription(UpgradeData upgrade)
     {
-        int currentLevel = playerData.GetUpgradeLevel(upgrade.upgradeName);
+        int currentLevel = ActivePlayerData != null ? ActivePlayerData.GetUpgradeLevel(upgrade.upgradeName) : 0;
         double cost = GetUpgradeCost(upgrade);
-        
-        string effect = upgrade.upgradeType == UpgradeType.Click ? 
-            $"Click Power +{upgrade.valueIncrease}" : 
-            $"Passive Income +{upgrade.valueIncrease}/sec";
-            
-        return $"{upgrade.upgradeName} (Lvl {currentLevel})\n{effect}\nCost: {cost} {upgrade.currency}";
+
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        sb.Append(upgrade.upgradeName).Append(" (Lvl ").Append(currentLevel).Append(")\n");
+        if (upgrade.effects != null)
+        {
+            for (int i = 0; i < upgrade.effects.Count; i++)
+            {
+                var e = upgrade.effects[i];
+                if (e == null) continue;
+                if (e.effectType == UpgradeEffectType.Click)
+                {
+                    sb.Append("Click Power +").Append(e.valueIncrease).Append(" (" ).Append(e.currency).Append(")\n");
+                }
+                else if (e.effectType == UpgradeEffectType.Passive)
+                {
+                    sb.Append("Passive Income +").Append(e.valueIncrease).Append("/sec (").Append(e.currency).Append(")\n");
+                }
+            }
+        }
+        sb.Append("Cost: ").Append(FormatNumber(cost)).Append(' ').Append(upgrade.costCurrency);
+        return sb.ToString();
     }
+
+	public int GetUpgradeLevel(UpgradeData upgrade)
+	{
+		return ActivePlayerData != null ? ActivePlayerData.GetUpgradeLevel(upgrade.upgradeName) : 0;
+	}
+
+	private string FormatNumber(double number)
+	{
+		if (number >= 1000000)
+			return (number / 1000000d).ToString("F1") + "M";
+		if (number >= 1000)
+			return (number / 1000d).ToString("F1") + "K";
+		return number.ToString("F0");
+	}
 }

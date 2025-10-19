@@ -24,9 +24,10 @@ public class GameUIController : MonoBehaviour
     public TextMeshProUGUI candyCanePerSecondText;
     public TextMeshProUGUI cookiePerSecondText;
     
-    [Header("Upgrade System")]
-    public Transform upgradeParent;
-    public GameObject upgradeButtonPrefab;
+	[Header("Upgrade System")]
+	public Transform upgradeParent;
+	public GameObject upgradeButtonPrefab;
+	public GameObject upgradeItemPrefab; // new prefab that has UpgradeItemUI
     
     [Header("Managers")]
     public PlayerData playerData;
@@ -74,7 +75,7 @@ public class GameUIController : MonoBehaviour
 		// Ensure GameManager has references so clicks can add currency
 		if (GameManager.PlayerData == null || GameManager.UpgradeManager == null || GameManager.ClickerManager == null || GameManager.UIController == null)
 		{
-			var clickerMgr = GameObject.FindObjectOfType<ClickerManager>();
+			var clickerMgr = Object.FindFirstObjectByType<ClickerManager>();
 			GameManager.Initialize(playerData, upgradeManager, clickerMgr, this);
 		}
 
@@ -102,16 +103,27 @@ public class GameUIController : MonoBehaviour
 		}
 	}
 
-    void Update()
+	void Update()
     {
 		if (Time.time >= nextUiUpdateTime)
 		{
 			UpdateCurrencyDisplay();
 			UpdateStatsDisplay();
 			UpdateUpgradeButtons();
+			RefreshUpgradeItems();
 			nextUiUpdateTime = Time.time + uiUpdateIntervalSeconds;
 		}
     }
+
+	private void RefreshUpgradeItems()
+	{
+		if (upgradeParent == null) return;
+		var items = upgradeParent.GetComponentsInChildren<UpgradeItemUI>(true);
+		for (int i = 0; i < items.Length; i++)
+		{
+			if (items[i] != null) items[i].Refresh();
+		}
+	}
 
 	public void ForceRefresh()
 	{
@@ -188,34 +200,52 @@ public class GameUIController : MonoBehaviour
 
 	void CreateUpgradeButtons()
     {
-        if (upgradeManager == null || upgradeButtonPrefab == null || upgradeParent == null) return;
+		if (upgradeManager == null || upgradeParent == null) return;
 		
 		foreach (var upgrade in upgradeManager.availableUpgrades)
         {
-            GameObject buttonObj = Instantiate(upgradeButtonPrefab, upgradeParent);
-            upgradeButtons.Add(buttonObj);
-			
-			// Set up button
-			Button button = buttonObj.GetComponent<Button>();
-			Text buttonText = buttonObj.GetComponentInChildren<Text>();
-			if (button != null)
+			GameObject item = null;
+			if (upgradeItemPrefab != null)
 			{
-				button.onClick.AddListener(() => TryPurchaseUpgrade(upgrade));
+				item = Instantiate(upgradeItemPrefab, upgradeParent);
+				var ui = item.GetComponent<UpgradeItemUI>();
+				if (ui != null)
+				{
+					ui.Setup(upgrade, upgradeManager);
+				}
 			}
-			if (buttonText != null)
+			else if (upgradeButtonPrefab != null)
 			{
-				buttonText.text = upgrade.upgradeName;
+				// fallback to old button flow
+				GameObject buttonObj = Instantiate(upgradeButtonPrefab, upgradeParent);
+				upgradeButtons.Add(buttonObj);
+				Button button = buttonObj.GetComponent<Button>();
+				Text buttonText = buttonObj.GetComponentInChildren<Text>();
+				if (button != null)
+				{
+					button.onClick.AddListener(() => TryPurchaseUpgrade(upgrade));
+				}
+				if (buttonText != null)
+				{
+					buttonText.text = upgrade.upgradeName;
+				}
+				upgradeEntries.Add(new UpgradeEntry
+				{
+					button = button,
+					text = buttonText,
+					data = upgrade,
+					lastDescription = null,
+					lastInteractable = false
+				});
 			}
-			// Cache entry
-			upgradeEntries.Add(new UpgradeEntry
-			{
-				button = button,
-				text = buttonText,
-				data = upgrade,
-				lastDescription = null,
-				lastInteractable = false
-			});
         }
+
+		// Force a layout rebuild so ScrollRect content expands after dynamic population
+		var rt = upgradeParent as RectTransform;
+		if (rt != null)
+		{
+			LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+		}
     }
 
 	void UpdateUpgradeButtons()
